@@ -549,9 +549,12 @@ def replay_consistent_for(fuzzer_test_output_path, fuzzer_test_files):
 
 
 MODE_COV = 'cov'
+COV_FORMAT_PLAIN = 'plain'
+COV_FORMAT_CARTOGRAPHER = 'cartographer'
 def do_cov(args, leftover_args):
     from fuzzware_harness.util import (load_config_deep, parse_symbols,
                                         closest_symbol)
+    from .util.cov_formats import (dump_cov_plain, dump_cov_cartographer)
 
     check_leftover_args(leftover_args)
 
@@ -627,8 +630,14 @@ def do_cov(args, leftover_args):
         # Dump out the basic block list in case we are asked to do so
         if args.outfile:
             logger.debug(f"Writing covered basic blocks to {args.outfile}")
-            with open(args.outfile, "w") as f:
-                f.write("\n".join(map(lambda bb: "{:x}".format(bb), sorted(covered_bbs))))
+            if args.out_format == COV_FORMAT_PLAIN:
+                dump_cov_plain(covered_bbs, args.outfile)
+            elif args.out_format == COV_FORMAT_CARTOGRAPHER:
+                dump_cov_cartographer(covered_bbs, args.outfile)
+            else:
+                logger.error(f"Unknown coverage outfile format '{args.out_format}'")
+                exit(1)
+
         else:
             if symbol_bbs:
                 print("\n====== Found Symbols ======")
@@ -1033,6 +1042,7 @@ def main():
     parser_cov.add_argument('-p', '--projdir', default=None, help="(Optional) Project directory to search coverage for. If not specified, the current working directory is used.")
     parser_cov.add_argument('-c', '--syms-config', default=None, help="(Optional) Fuzzware config file containing symbols (a 'symbols' attribute). Will be derived from projdir if not specified.")
     parser_cov.add_argument('-o', '--outfile', default=None, help="(Optional) Destination file path to dump a set of matching addresses in line-based hex to.")
+    parser_cov.add_argument('--out-format', default=COV_FORMAT_PLAIN, help=f"(Optional) Coverage output file format.", choices=(COV_FORMAT_PLAIN, COV_FORMAT_CARTOGRAPHER))
     parser_cov.add_argument('--crashes', default=False, action="store_true", help="(Optional) Instead of searching inputs, search coverage of crashes.")
     parser_cov.add_argument('-e', '--exclude', type=str, default=None, help="(Optional) Comma-separated list of certain symbols/addresses which should not have been hit in the given input. Useful for finding inputs which exhibit specific coverage. Example: 'my_error_func,0x08001234'")
     parser_cov.add_argument('-s', '--skip-num', type=int, default=0, help="(Optional) Skip the first n matching input files which exhibit the given behavior. Useful to cycle through (and replay) different inputs.")

@@ -260,6 +260,8 @@ def do_pipeline(args, leftover_args):
 
     if args.skip_afl_cpufreq:
         os.environ['AFL_SKIP_CPUFREQ'] = "1"
+    # Fuzzware does not crash the emulator process, disable warning
+    os.environ['AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES'] = "1"
 
     check_afl_requirements()
     check_worker_requirements()

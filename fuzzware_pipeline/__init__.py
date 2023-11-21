@@ -728,7 +728,7 @@ def do_gentraces(args, leftover_args):
     if can_use_native_batch:
         print("[+] Using native batch mode as only natively supported traces are to be generated")
     else:
-        print(f"[*] We need non-native traces. Doing this one by one. This could take a while...")
+        print(f"[*] We need non-native traces. This could take a while...")
 
     for main_dir_num in main_dir_nums:
         if main_dir_num > len(project_main_dirs):

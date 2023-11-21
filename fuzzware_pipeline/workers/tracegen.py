@@ -74,8 +74,8 @@ num_processed = None
 
 def init(args):
     ''' store the counter for later use '''
-    global counter
-    counter = args
+    global num_processed 
+    num_processed = args
 
 
 def gen_missing_maindir_traces(maindir, required_trace_prefixes, fuzzer_nums=None, tracedir_postfix="", log_progress=False, verbose=False, crashing_inputs=False, force_overwrite=False, num_emulators=1):
@@ -164,7 +164,7 @@ def gen_missing_maindir_traces(maindir, required_trace_prefixes, fuzzer_nums=Non
         num_processed = Value('i', 0)
         for input_path, bbl_trace_path, ram_trace_path, mmio_trace_path, bbl_set_path, mmio_set_path, bbl_hash_path in jobs_for_config:
             args.append((str(config_path), str(input_path), bbl_trace_path, ram_trace_path, mmio_trace_path, bbl_set_path, mmio_set_path, bbl_hash_path, extra_args, verbose, start_time, log_progress, num_gentrace_jobs))
-        with Pool(num_emulators) as p:
+        with Pool(num_emulators, init, (num_processed,)) as p:
             p.map(gen_traces_wrapper, args)
 
 def gen_traces_wrapper(job):

@@ -205,20 +205,37 @@ class Pipeline:
     def parse_pipeline_yml_config(self, full_config):
         self.boot_avoided_bbls = set()
         self.boot_required_bbls = set()
-        boot_config = full_config.get(CONFIG_ENTRY_CATEGORY_BOOT)
-        if boot_config:
-            boot_required_bbls = boot_config.get(CONFIG_ENTRY_NAME_BOOT_REQUIRED)
-            if boot_required_bbls:
-                self.boot_required_bbls = set(map(lambda v: parse_address_value(self.symbols, v)&(~1), boot_required_bbls))
-            boot_avoided_bbls = boot_config.get(CONFIG_ENTRY_NAME_BOOT_AVOID) or boot_config.get(CONFIG_ENTRY_NAME_BOOT_BLACKLISTED)
-            if boot_avoided_bbls:
-                self.boot_avoided_bbls = set(map(lambda v: parse_address_value(self.symbols, v)&(~1), boot_avoided_bbls))
+        checkpoint_config = full_config.get(CONFIG_ENTRY_CATEGORY_CHECKPOINTS)
+        checkpoint_configs = {}
+        if checkpoint_config:
+            # this is a list of checkpoint objects
+            # this is the same order as in the config, as dicts preserve insertion order
+            for checkpoint_name in checkpoint_config.keys():
+                single_checkpoint_parsed = self.parse_single_checkpoint(checkpoint_config[checkpoint_name])
+                checkpoint_configs[checkpoint_name] = single_checkpoint_parsed
+            print(checkpoint_config.keys())
 
-            if self.booted_bbl == DEFAULT_IDLE_BBL:
-                self.booted_bbl = parse_address_value(self.symbols, boot_config[CONFIG_ENTRY_NAME_BOOT_TARGET]) & (~1)
-            logger.debug("Parsed boot config. Booted bbl: 0x{:08x}".format(self.booted_bbl))
-            logger.debug("Avoid list: " + " ".join([hex(addr) for addr in self.boot_avoided_bbls]))
-            logger.debug("Required: " + " ".join([hex(addr) for addr in self.boot_required_bbls]))
+    def parse_single_checkpoint(self, checkpoint_config):
+        checkpoint = {}
+        # this parses a single checkpoint
+        required_bbls = checkpoint_config.get(CONFIG_ENTRY_NAME_CHECKPOINTS_REQUIRED)
+        if required_bbls:
+            checkpoint["required_bbls"] = set(map(lambda v: parse_address_value(self.symbols, v)&(~1), required_bbls))
+        else:
+            # without else, the entry is not initialised if missing
+            checkpoint["required_bbls"] = set()
+        avoided_bbls = checkpoint_config.get(CONFIG_ENTRY_NAME_CHECKPOINTS_AVOID) or checkpoint_config.get(CONFIG_ENTRY_NAME_CHECKPOINTS_BLACKLISTED)
+        if avoided_bbls:
+            checkpoint["avoided_bbls"] = set(map(lambda v: parse_address_value(self.symbols, v)&(~1), avoided_bbls))
+        else:
+            # without else, the entry is not initialised if missing
+            checkpoint["avoided_bbls"] = set()
+        # this one is mandatory, so no check before
+        checkpoint["checkpoint_target"] = parse_address_value(self.symbols, checkpoint_config[CONFIG_ENTRY_NAME_CHECKPOINTS_TARGET]) & (~1)
+        logger.debug("Parsed checkpoint config. Checkpoint target bbl: 0x{:08x}".format(checkpoint["checkpoint_target"]))
+        logger.debug("Avoid list: " + " ".join([hex(addr) for addr in checkpoint["avoided_bbls"]]))
+        logger.debug("Required: " + " ".join([hex(addr) for addr in checkpoint["required_bbls"]]))
+        return checkpoint
 
     def parse_ground_truth_files(self):
         valid_bb_list_path = self.valid_basic_block_list_path

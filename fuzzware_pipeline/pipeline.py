@@ -50,6 +50,10 @@ class Pipeline:
     boot_avoided_bbls: set
     groundtruth_valid_basic_blocks: set
     groundtruth_milestone_basic_blocks: set
+    # checkpoint logic
+    checkpoints: dict
+    current_checkpoint: dict
+    current_checkpoint_name: str
 
     # Runtime state
     start_time: int
@@ -233,7 +237,20 @@ class Pipeline:
             for checkpoint_name in checkpoint_config.keys():
                 single_checkpoint_parsed = self.parse_single_checkpoint(checkpoint_config[checkpoint_name])
                 checkpoint_configs[checkpoint_name] = single_checkpoint_parsed
-            print(checkpoint_config.keys())
+            self.checkpoints = checkpoint_configs
+            first_checkpoint_key = list(self.checkpoints.keys())[0]
+            # the current checkpoint always holds the next checkpoint to reach
+            self.current_checkpoint = checkpoint_configs[first_checkpoint_key]
+            self.current_checkpoint_name = first_checkpoint_key
+            # if we have checkpoints, make the last checkpoint the booted_bbl
+            last_checkpoint_key = list(self.checkpoints.keys())[-1]
+            last_checkpoint = checkpoint_configs[last_checkpoint_key]
+            if last_checkpoint["required_bbls"]:
+                self.boot_required_bbls = last_checkpoint["required_bbls"]
+            if last_checkpoint["avoided_bbls"]:
+                self.boot_required_bbls = last_checkpoint["avoided_bbls"]
+            if self.booted_bbl == DEFAULT_IDLE_BBL:
+                self.booted_bbl = last_checkpoint["checkpoint_target"]
 
     def parse_single_checkpoint(self, checkpoint_config):
         checkpoint = {}
@@ -268,6 +285,9 @@ class Pipeline:
 
     def __init__(self, parent_dir, name, base_inputs, num_main_fuzzer_procs, disable_modeling=False, write_worker_logs=False, do_full_tracing=False, config_name=SESS_FILENAME_CONFIG, timeout_seconds=0, use_aflpp=False):
         self.booted_bbl = DEFAULT_IDLE_BBL
+        self.checkpoints = {}
+        self.current_checkpoint = {}
+        self.current_checkpoint_name = ""
         self.disable_modeling = disable_modeling
         self.shutdown_requested = False
         self.sessions = {}
@@ -466,6 +486,29 @@ class Pipeline:
             (not self.boot_avoided_bbls & bbl_set) and \
                 (not self.boot_required_bbls - bbl_set)
         )
+
+    # this checks if the currently defined checkpoint is hit 
+    def checkpoint_progress(self, bbl_set):
+        # did we find our checkpoint?
+        return self.current_checkpoint and (self.current_checkpoint["checkpoint_target"] in bbl_set) and (
+            # And no blacklist addresses found and all whitelist addresses in bbl set
+            (not self.current_checkpoint["avoided_bbls"] & bbl_set) and \
+                (not self.current_checkpoint["required_bbls"] - bbl_set)
+        )
+
+    # set all the fields to the next checkpoint
+    def update_checkpoint(self):
+        if self.checkpoints:
+            checkpoint_names = list(self.checkpoints.keys())
+            current_index = checkpoint_names.index(self.current_checkpoint_name)
+            # is this already the last checkpoint?
+            if (current_index + 1) == len(checkpoint_names):
+                # then return and do nothing
+                return
+            else:
+                # otherwise update checkpoint name and current checkpoint
+                self.current_checkpoint_name = checkpoint_names[current_index+1]
+                self.current_checkpoint = self.checkpoints[self.current_checkpoint_name]
 
     def choose_next_session_inputs(self, config_map):
         """
@@ -701,11 +744,21 @@ class Pipeline:
                                     logger.info(f"Discovered milestone basic block: 0x{pc:08x}{sym_suffix}")
                                     self.visited_milestone_basic_blocks.add(pc)
                             self.visited_translation_blocks |= new_bbs
-
+                        # if this is hit, we are done with our checkpoints!
                         if (not (self.curr_main_session.prefix_input_path or pending_prefix_candidate)) and self.is_successfully_booted(bbl_set):
                             logger.info("FOUND MAIN ADDRESS for trace file: '{}'".format(trace_filename))
                             pending_prefix_candidate = input_for_trace_path(trace_file_path)
                             restart_pending = True
+                            self.curr_main_session.kill_fuzzers()
+                        # if not, we need to check if we hit one of our checkpoints
+                        elif (not (self.curr_main_session.prefix_input_path or pending_prefix_candidate)) and self.checkpoint_progress(bbl_set):
+                            # we found our checkpoint and fulfilled avoid/visit conditions
+                            logger.info("FOUND CHECKPOINT {} for trace file: '{}'".format(self.current_checkpoint_name, trace_filename))
+                            # set our current input as prefix and restart
+                            pending_prefix_candidate = input_for_trace_path(trace_file_path)
+                            restart_pending = True
+                            # I think we cannot update our checkpoint here because it is still needed for prefix size computation 
+                            logger.debug(f"Updated to checkpoint {self.current_checkpoint_name}")
                             self.curr_main_session.kill_fuzzers()
 
                         logger.debug("Looking at new MMIO access set")

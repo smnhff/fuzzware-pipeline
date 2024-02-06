@@ -136,7 +136,7 @@ class Session:
         self.fuzzers.append(fuzzer)
         return fuzzer.start(silent=True)
 
-    def get_booting_prefix_size(self, input_path):
+    def get_progress_prefix_size(self, input_path):
         """
         For an input file located at input_path, find the prefix size required to reach successful boot.
 
@@ -145,10 +145,16 @@ class Session:
         """
         gen_traces(self.config_path, input_path, mmio_trace_path=self.temp_mmio_trace_path, bbl_set_path=self.temp_bbl_set_path, extra_args=["--exit-at", "0x{:x}".format(self.parent.booted_bbl)])
         bbl_set = set(parse_bbl_set(self.temp_bbl_set_path))
-        if not self.parent.is_successfully_booted(bbl_set):
+        # did we find the last checkpoint?
+        checkpoints_done = self.parent.is_successfully_booted(bbl_set);
+        # did we find our current checkpoint?
+        checkpoint_progress = self.parent.checkpoint_progress(bbl_set);
+        # if neither happened, we do not have an interesting prefix
+        if not (checkpoints_done or checkpoint_progress):
             return None
 
         prefix_size = None
+        # count all the consumptions
         for _, _, _, mode, _, access_fuzz_ind, num_consumed_fuzz_bytes, _, _ in parse_mmio_trace(self.temp_mmio_trace_path)[::-1]:
             if mode == "r":
                 prefix_size = access_fuzz_ind + num_consumed_fuzz_bytes
@@ -163,8 +169,8 @@ class Session:
                 copy_prefix_to(self.temp_prefix_input_path, input_path, prefix_size)
                 gen_traces(self.config_path, self.temp_prefix_input_path, mmio_trace_path=self.temp_mmio_trace_path, bbl_set_path=self.temp_bbl_set_path, extra_args=["--exit-at", "0x{:x}".format(self.parent.booted_bbl)])
                 bbl_set = set(parse_bbl_set(self.temp_bbl_set_path))
-
-                if self.parent.is_successfully_booted(bbl_set):
+                # if we are done with our checkpoints or reached our current checkpoint, return the prefix size
+                if self.parent.is_successfully_booted(bbl_set) or self.parent.checkpoint_progress(bbl_set):
                     return prefix_size
                 prefix_size += 1
 
@@ -197,25 +203,35 @@ class Session:
 
         # Handle cases where prefix candidate is passed
         if prefix_candidate_path:
-            booting_prefix_size = self.get_booting_prefix_size(prefix_candidate_path)
-            is_booted_successfully = booting_prefix_size is not None
+            # this returns none when we do not have a prefix
+            # if it is not none, the current checkpoint is no longer needed 
+            progress_prefix_size = self.get_progress_prefix_size(prefix_candidate_path)
+            did_some_progress = progress_prefix_size is not None
             if is_previously_used_prefix:
-                if is_booted_successfully:
+                if did_some_progress:
+                    # Update the checkpoint since we are not none
+                    # does not matter if we are the last checkpoint
+                    # in this case, update checkpoint does nothing
+                    self.parent.update_checkpoint()
                     # A previously booting prefix still boots.
                     # Set the booting prefix and prepend remainder to input files
-                    self.save_prefix_input(prefix_candidate_path, booting_prefix_size)
-                    prepend_to_all(self.base_input_dir, prefix_candidate_path, from_offset=booting_prefix_size)
+                    self.save_prefix_input(prefix_candidate_path, progress_prefix_size)
+                    prepend_to_all(self.base_input_dir, prefix_candidate_path, from_offset=progress_prefix_size)
                 else:
                     # The input no longer successfully boots the image
                     # Attach the no longer booting prefix to input files and minimize without prefix
                     prepend_to_all(self.base_input_dir, prefix_candidate_path)
             else:
-                if is_booted_successfully:
+                if did_some_progress:
+                    # Update the checkpoint since we are not none
+                    # does not matter if we are the last checkpoint
+                    # in this case, update checkpoint does nothing
+                    self.parent.update_checkpoint()
                     # A brand new booting input was discovered, use it as new input prefix and reset to generic inputs
                     # extract prefix from input, copy over generic base inputs
                     shutil.rmtree(self.base_input_dir)
                     shutil.copytree(self.parent.generic_inputs_dir, self.base_input_dir)
-                    self.save_prefix_input(prefix_candidate_path, booting_prefix_size)
+                    self.save_prefix_input(prefix_candidate_path, progress_prefix_size)
                     # No minimization or input corpus adjustment required in this case, return
                     return
         else:

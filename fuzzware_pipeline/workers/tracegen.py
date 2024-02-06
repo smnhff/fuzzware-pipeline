@@ -6,6 +6,7 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
+from multiprocessing import Pool, Value
 
 import rq
 from fuzzware_pipeline.logging_handler import logging_handler
@@ -67,7 +68,17 @@ def batch_gen_native_traces(config_path, input_paths, extra_args=None, bbl_set_p
 
     gentrace_proc.destroy()
 
-def gen_missing_maindir_traces(maindir, required_trace_prefixes, fuzzer_nums=None, tracedir_postfix="", log_progress=False, verbose=False, crashing_inputs=False, force_overwrite=False):
+# the number of completed tracegen jobs
+# shared over processes, so it needs a lock
+num_processed = None
+
+def init(args):
+    ''' store the counter for later use '''
+    global num_processed 
+    num_processed = args
+
+
+def gen_missing_maindir_traces(maindir, required_trace_prefixes, fuzzer_nums=None, tracedir_postfix="", log_progress=False, verbose=False, crashing_inputs=False, force_overwrite=False, num_emulators=1):
     projdir = nc.project_base(maindir)
     config_path = nc.config_file_for_main_path(maindir)
     extra_args = parse_extra_args(load_extra_args(nc.extra_args_for_config_path(config_path)), projdir)
@@ -138,30 +149,41 @@ def gen_missing_maindir_traces(maindir, required_trace_prefixes, fuzzer_nums=Non
             logger.info("No traces to generate for main path")
         return
 
-    num_processed = 0
-
     start_time = time.time()
+    # after here, starting time is never written
     if can_use_native_batch:
         input_paths, bbl_set_paths, mmio_set_paths, bbl_hash_paths = jobs_for_config
         batch_gen_native_traces(config_path, input_paths, extra_args, bbl_set_paths, mmio_set_paths, bbl_hash_paths, not verbose)
         if log_progress:
             logger.info(f"Generating traces took {time.time() - start_time:.02f} seconds for {len(input_paths)} input(s)")
     else:
-        num_processed = 0
+        # jobs for config does not have all information we need for a run
+        # but we want everything in a list for mp.map
+        args = []
+        global num_processed 
+        num_processed = Value('i', 0)
         for input_path, bbl_trace_path, ram_trace_path, mmio_trace_path, bbl_set_path, mmio_set_path, bbl_hash_path in jobs_for_config:
-            gen_traces(str(config_path), str(input_path),
-                bbl_trace_path=bbl_trace_path, ram_trace_path=ram_trace_path, mmio_trace_path=mmio_trace_path,
-                bbl_set_path=bbl_set_path, mmio_set_path=mmio_set_path, bbl_hash_path=bbl_hash_path,
-                extra_args=extra_args, silent=not verbose
-            )
-            num_processed += 1
+            args.append((str(config_path), str(input_path), bbl_trace_path, ram_trace_path, mmio_trace_path, bbl_set_path, mmio_set_path, bbl_hash_path, extra_args, verbose, start_time, log_progress, num_gentrace_jobs))
+        with Pool(num_emulators, init, (num_processed,)) as p:
+            p.map(gen_traces_wrapper, args)
 
-            if log_progress:
-                if num_processed > 0 and num_processed % 50 == 0:
-                    time_passed = round(time.time() - start_time)
-                    relative_done = (num_processed+1) / num_gentrace_jobs
-                    time_estimated = round((relative_done ** (-1)) * time_passed)
-                    logger.info(f"[*] Processed {num_processed}/{num_gentrace_jobs} in {time_passed} seconds. Estimated seconds remaining: {time_estimated-time_passed}")
+def gen_traces_wrapper(job):
+    config_path, input_path, bbl_trace_path, ram_trace_path, mmio_trace_path, bbl_set_path, mmio_set_path, bbl_hash_path, extra_args, verbose, start_time, log_progress, num_gentrace_jobs = job
+    gen_traces(str(config_path), str(input_path),
+        bbl_trace_path=bbl_trace_path, ram_trace_path=ram_trace_path, mmio_trace_path=mmio_trace_path,
+        bbl_set_path=bbl_set_path, mmio_set_path=mmio_set_path, bbl_hash_path=bbl_hash_path,
+        extra_args=extra_args, silent=not verbose
+    )
+    global num_processed
+    with num_processed.get_lock():
+        num_processed.value += 1
+        if log_progress:
+            if num_processed.value > 0 and num_processed.value % 50 == 0:
+                time_passed = round(time.time() - start_time)
+                relative_done = (num_processed.value+1) / num_gentrace_jobs
+                time_estimated = round((relative_done ** (-1)) * time_passed)
+                logger.info(f"[*] Processed {num_processed.value}/{num_gentrace_jobs} in {time_passed} seconds. Estimated seconds remaining: {time_estimated-time_passed}")
+
 
 def gen_all_missing_traces(projdir, trace_name_prefixes=None, log_progress=False, verbose=False, crashing_inputs=False, force_overwrite=False):
     if trace_name_prefixes is None:

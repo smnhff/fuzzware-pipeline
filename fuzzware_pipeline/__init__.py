@@ -728,7 +728,7 @@ def do_gentraces(args, leftover_args):
     if can_use_native_batch:
         print("[+] Using native batch mode as only natively supported traces are to be generated")
     else:
-        print(f"[*] We need non-native traces. Doing this one by one. This could take a while...")
+        print(f"[*] We need non-native traces. This could take a while...")
 
     for main_dir_num in main_dir_nums:
         if main_dir_num > len(project_main_dirs):
@@ -737,7 +737,7 @@ def do_gentraces(args, leftover_args):
         main_dir = project_main_dirs[main_dir_num-1]
 
         print(f"Generating traces for main directory {main_dir}")
-        gen_missing_maindir_traces(main_dir, required_trace_prefixes, tracedir_postfix=args.tracedir_postfix, log_progress=True, verbose=args.verbose, crashing_inputs=args.crashes)
+        gen_missing_maindir_traces(main_dir, required_trace_prefixes, tracedir_postfix=args.tracedir_postfix, log_progress=True, verbose=args.verbose, crashing_inputs=args.crashes, num_emulators=args.num_instances)
 
 MODE_GENSTATS = 'genstats'
 STATNAME_COV, STATNAME_MMIO_COSTS, STATNAME_MMIO_OVERHEAD_ELIM = 'coverage', 'modeling-costs', 'mmio-overhead-elim'
@@ -1023,6 +1023,7 @@ def main():
     parser_gentraces.add_argument('--tracedir-postfix', help="(optional) generate traces in an alternative trace dir. If this is specified, an alternative trace dir is created within the fuzzer dir named traces_<tracedir-postfix>.", default=None)
     parser_gentraces.add_argument('--dryrun', action="store_true", default=False, help="Only list the missing trace files, do not generate actual traces.")
     parser_gentraces.add_argument('-v', '--verbose', action="store_true", default=False, help="Display stdout output of trace generation.")
+    parser_gentraces.add_argument('-n', '--num-instances', default=1, type=int, help="Number of local emulator instances to use.")
 
     # Genstats command-line arguments
     parser_genstats.add_argument('stats', nargs="*", default=(STATNAME_COV, STATNAME_CRASH_TIMINGS,STATNAME_MMIO_COSTS), help=f"The stats to generate. Options: {','.join(KNOWN_STATNAMES)}. Defaults to '{STATNAME_COV} {STATNAME_CRASH_TIMINGS} {STATNAME_MMIO_COSTS}'.")

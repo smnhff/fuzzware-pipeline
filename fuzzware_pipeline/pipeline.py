@@ -201,10 +201,30 @@ class Pipeline:
             exit(1)
         logger.info("Emulator dry-run successful!")
         os.remove(dry_input)
-
+    
     def parse_pipeline_yml_config(self, full_config):
+        self.parse_pipeline_boot_config(full_config)
+        self.parse_pipeline_checkpoint_config(full_config)
+
+    def parse_pipeline_boot_config(self, full_config):
         self.boot_avoided_bbls = set()
         self.boot_required_bbls = set()
+        boot_config = full_config.get(CONFIG_ENTRY_CATEGORY_BOOT)
+        if boot_config:
+            boot_required_bbls = boot_config.get(CONFIG_ENTRY_NAME_BOOT_REQUIRED)
+            if boot_required_bbls:
+                self.boot_required_bbls = set(map(lambda v: parse_address_value(self.symbols, v)&(~1), boot_required_bbls))
+            boot_avoided_bbls = boot_config.get(CONFIG_ENTRY_NAME_BOOT_AVOID) or boot_config.get(CONFIG_ENTRY_NAME_BOOT_BLACKLISTED)
+            if boot_avoided_bbls:
+                self.boot_avoided_bbls = set(map(lambda v: parse_address_value(self.symbols, v)&(~1), boot_avoided_bbls))
+
+            if self.booted_bbl == DEFAULT_IDLE_BBL:
+                self.booted_bbl = parse_address_value(self.symbols, boot_config[CONFIG_ENTRY_NAME_BOOT_TARGET]) & (~1)
+            logger.debug("Parsed boot config. Booted bbl: 0x{:08x}".format(self.booted_bbl))
+            logger.debug("Avoid list: " + " ".join([hex(addr) for addr in self.boot_avoided_bbls]))
+            logger.debug("Required: " + " ".join([hex(addr) for addr in self.boot_required_bbls]))
+
+    def parse_pipeline_checkpoint_config(self, full_config):
         checkpoint_config = full_config.get(CONFIG_ENTRY_CATEGORY_CHECKPOINTS)
         checkpoint_configs = {}
         if checkpoint_config:

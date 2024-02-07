@@ -619,6 +619,7 @@ class Pipeline:
             new_sess_inputs_dir = self.curr_main_session.base_input_dir
             os.mkdir(new_sess_inputs_dir)
             for path in input_path_list:
+                logger.debug(f"Copying {path} to {new_sess_inputs_dir}")
                 shutil.copy2(path, new_sess_inputs_dir)
 
             self.curr_main_session.minimize_inputs(prefix_candidate_path=prefix_input_candidate, is_previously_used_prefix=is_previously_used_prefix)

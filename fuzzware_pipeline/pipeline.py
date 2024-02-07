@@ -599,6 +599,7 @@ class Pipeline:
         # Before adding the new session, get the possibly previously used prefix path
         is_previously_used_prefix = False
         if self.curr_main_sess_index and self.curr_main_session.prefix_input_path:
+            logger.debug(f"We found a prefix: {self.curr_main_session.prefix_input_path}")
             is_previously_used_prefix = True
             prefix_input_candidate = self.curr_main_session.prefix_input_path
 
@@ -608,7 +609,10 @@ class Pipeline:
 
         # Try different sets of inputs in order of quality
         start_success = False
-        for input_path_list in self.choose_next_session_inputs(config_map):
+        input_paths = self.choose_next_session_inputs(config_map)
+        logger.debug(f"Trying out this list of input: {input_paths}")
+        logger.debug(f"Taken from config map {config_map}")
+        for input_path_list in input_paths:
             # We have previous inputs, carry them over
             logger.debug("Copying over {} inputs".format(len(input_path_list)))
 
@@ -758,7 +762,6 @@ class Pipeline:
                             pending_prefix_candidate = input_for_trace_path(trace_file_path)
                             restart_pending = True
                             # I think we cannot update our checkpoint here because it is still needed for prefix size computation 
-                            logger.debug(f"Updated to checkpoint {self.current_checkpoint_name}")
                             self.curr_main_session.kill_fuzzers()
 
                         logger.debug("Looking at new MMIO access set")
@@ -795,6 +798,7 @@ class Pipeline:
                             restart_pending, num_config_updates = False, 0
                             self.curr_main_session.shutdown()
                             self.add_main_session(pending_prefix_candidate)
+                            logger.debug(f"Updated to checkpoint {self.current_checkpoint_name}")
                             pending_prefix_candidate = None
                             time_latest_new_basic_block = None
                         else:

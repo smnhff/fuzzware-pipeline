@@ -610,9 +610,9 @@ class Pipeline:
         # Try different sets of inputs in order of quality
         start_success = False
         input_paths = self.choose_next_session_inputs(config_map)
-        logger.debug(f"Trying out this list of input: {input_paths}")
         logger.debug(f"Taken from config map {config_map}")
         for input_path_list in input_paths:
+            logger.debug(f"Trying out this list of paths: {input_path}")
             # We have previous inputs, carry them over
             logger.debug("Copying over {} inputs".format(len(input_path_list)))
 

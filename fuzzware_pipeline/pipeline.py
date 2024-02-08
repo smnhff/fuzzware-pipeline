@@ -617,6 +617,7 @@ class Pipeline:
             logger.debug("Copying over {} inputs".format(len(input_path_list)))
 
             new_sess_inputs_dir = self.curr_main_session.base_input_dir
+            logger.debug(f"Creating directory {new_sess_inputs_dir}")
             os.mkdir(new_sess_inputs_dir)
             for path in input_path_list:
                 logger.debug(f"Copying {path} to {new_sess_inputs_dir}")

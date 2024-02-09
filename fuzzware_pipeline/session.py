@@ -247,11 +247,13 @@ class Session:
             run_corpus_minimizer(harness_args, self.temp_minimization_dir, self.base_input_dir, silent=silent, use_aflpp=self.parent.use_aflpp)
             if not os.listdir(self.base_input_dir):
                 self.parent.add_warning_line("Minimization for fuzzing session '{}' had no inputs remaining, copying generic inputs.".format(self.name))
+                logger.debug(f"Minimisation did not find a base dir and is copying over the generic dir")
                 shutil.rmtree(self.base_input_dir, True)
                 shutil.copytree(self.parent.generic_inputs_dir, self.base_input_dir)
         except subprocess.CalledProcessError:
             self.parent.add_warning_line("Minimization for fuzzing session '{}' failed, copying full inputs.".format(self.name))
-
+            logger.debug(f"corpus minimization process failed, restoring backup")
+            
             # In case minimization does not work out, copy all inputs
             shutil.rmtree(self.base_input_dir, True)
             shutil.copytree(self.temp_minimization_dir, self.base_input_dir)

@@ -251,7 +251,7 @@ class Session:
                 shutil.rmtree(self.base_input_dir, True)
                 shutil.copytree(self.parent.generic_inputs_dir, self.base_input_dir)
         except subprocess.CalledProcessError as e:
-            print(e)
+            logger.debug(e)
             self.parent.add_warning_line("Minimization for fuzzing session '{}' failed, copying full inputs.".format(self.name))
             logger.debug(f"corpus minimization process failed, restoring backup")
             

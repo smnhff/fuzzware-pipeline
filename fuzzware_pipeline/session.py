@@ -240,6 +240,7 @@ class Session:
             pass
 
         # Perform minimization. In case an input prefix is used, this is already saved in self.extra_runtime_args
+        logger.debug(f"Moving {self.base_input_dir} to {self.temp_minimization_dir}")
         shutil.move(self.base_input_dir, self.temp_minimization_dir)
         harness_args = self.emulator_args()
 

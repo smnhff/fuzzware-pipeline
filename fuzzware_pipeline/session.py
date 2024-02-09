@@ -151,6 +151,7 @@ class Session:
         checkpoint_progress = self.parent.checkpoint_progress(bbl_set);
         # if neither happened, we do not have an interesting prefix
         if not (checkpoints_done or checkpoint_progress):
+            logger.debug("found no checkpoint progress!")
             return None
 
         prefix_size = None
@@ -173,7 +174,7 @@ class Session:
                 if self.parent.is_successfully_booted(bbl_set) or self.parent.checkpoint_progress(bbl_set):
                     return prefix_size
                 prefix_size += 1
-
+        logger.debug("could not iterate the prefix until we show some progress")
         return None
 
     def emulator_args(self):

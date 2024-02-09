@@ -489,6 +489,8 @@ class Pipeline:
 
     # this checks if the currently defined checkpoint is hit 
     def checkpoint_progress(self, bbl_set):
+        tmp = self.current_checkpoint["checkpoint_target"]
+        logger.debug(f"checkpoint progress check! Looking for {tmp} in {bbl_set}")
         # did we find our checkpoint?
         return self.current_checkpoint and (self.current_checkpoint["checkpoint_target"] in bbl_set) and (
             # And no blacklist addresses found and all whitelist addresses in bbl set

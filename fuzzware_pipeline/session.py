@@ -229,6 +229,7 @@ class Session:
                     self.parent.update_checkpoint()
                     # A brand new booting input was discovered, use it as new input prefix and reset to generic inputs
                     # extract prefix from input, copy over generic base inputs
+                    logger.debug(f"Reached a checkpoint, deleting {self.base_input_dir} and resetting to {self.parent.generic_inputs_dir}")
                     shutil.rmtree(self.base_input_dir)
                     shutil.copytree(self.parent.generic_inputs_dir, self.base_input_dir)
                     self.save_prefix_input(prefix_candidate_path, progress_prefix_size)

@@ -250,7 +250,8 @@ class Session:
                 logger.debug(f"Minimisation did not find a base dir and is copying over the generic dir")
                 shutil.rmtree(self.base_input_dir, True)
                 shutil.copytree(self.parent.generic_inputs_dir, self.base_input_dir)
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
+            print(e)
             self.parent.add_warning_line("Minimization for fuzzing session '{}' failed, copying full inputs.".format(self.name))
             logger.debug(f"corpus minimization process failed, restoring backup")
             

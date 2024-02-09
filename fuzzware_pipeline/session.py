@@ -206,23 +206,29 @@ class Session:
             # this returns none when we do not have a prefix
             # if it is not none, the current checkpoint is no longer needed 
             progress_prefix_size = self.get_progress_prefix_size(prefix_candidate_path)
+            logger.debug(f"We are minimizing with a prefix, length {progress_prefix_size}")
             did_some_progress = progress_prefix_size is not None
             if is_previously_used_prefix:
+                logger.debug("we have an old prefix")
                 if did_some_progress:
-                    # Update the checkpoint since we are not none
-                    # does not matter if we are the last checkpoint
-                    # in this case, update checkpoint does nothing
-                    self.parent.update_checkpoint()
+                    logger.debug("The old prefix did some progress?")
+                    # the old prefix has had its update processed already
+                    # technically, this cannot happen. An old prefix cannot progress 
+                    # further in the checkpoints, can it?
+                    # self.parent.update_checkpoint()
                     # A previously booting prefix still boots.
                     # Set the booting prefix and prepend remainder to input files
                     self.save_prefix_input(prefix_candidate_path, progress_prefix_size)
                     prepend_to_all(self.base_input_dir, prefix_candidate_path, from_offset=progress_prefix_size)
                 else:
-                    # The input no longer successfully boots the image
+                    logger.debug("Old prefix did not find new progress, but still keep it")
+                    # the prefix did not make progress. Still, keep it as we need it to reach the next prefix
                     # Attach the no longer booting prefix to input files and minimize without prefix
+                    self.save_prefix_input(prefix_candidate_path, progress_prefix_size)
                     prepend_to_all(self.base_input_dir, prefix_candidate_path)
             else:
                 if did_some_progress:
+                    logger.debug("new prefix, progresses further!")
                     # Update the checkpoint since we are not none
                     # does not matter if we are the last checkpoint
                     # in this case, update checkpoint does nothing

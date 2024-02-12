@@ -156,8 +156,10 @@ class Session:
 
         prefix_size = None
         # count all the consumptions
-        for _, _, _, mode, _, access_fuzz_ind, num_consumed_fuzz_bytes, _, _ in parse_mmio_trace(self.temp_mmio_trace_path)[::-1]:
+        for evt_id, pc, lr, mode, access_size, access_fuzz_ind, num_consumed_fuzz_bytes, address, _ in parse_mmio_trace(self.temp_mmio_trace_path)[::-1]:
             if mode == "r":
+                logger.debug("found a memory access with the following properties: \n \
+                        pc: {pc}, lr: {lr}, access size: {access_size}, access indicator: {access_fuzz_ind}, num consumed bytes {num_consumed_bytes}, address: {address}")
                 prefix_size = access_fuzz_ind + num_consumed_fuzz_bytes
                 break
 
@@ -168,7 +170,9 @@ class Session:
             # Try expanding input and re-running for a number of times
             for _ in range(16):
                 copy_prefix_to(self.temp_prefix_input_path, input_path, prefix_size)
-                gen_traces(self.config_path, self.temp_prefix_input_path, mmio_trace_path=self.temp_mmio_trace_path, bbl_set_path=self.temp_bbl_set_path, extra_args=["--exit-at", "0x{:x}".format(self.parent.booted_bbl)])
+                # gen_traces(self.config_path, self.temp_prefix_input_path, mmio_trace_path=self.temp_mmio_trace_path, bbl_set_path=self.temp_bbl_set_path, extra_args=["--exit-at", "0x{:x}".format(self.parent.booted_bbl)])
+                checkpoint_target = self.parent.current_checkpoint["checkpoint_target"]
+                gen_traces(self.config_path, self.temp_prefix_input_path, mmio_trace_path=self.temp_mmio_trace_path, bbl_set_path=self.temp_bbl_set_path, extra_args=["--exit-at", "0x{:x}".format(checkpoint_target)])
                 bbl_set = set(parse_bbl_set(self.temp_bbl_set_path))
                 # if we are done with our checkpoints or reached our current checkpoint, return the prefix size
                 if self.parent.is_successfully_booted(bbl_set) or self.parent.checkpoint_progress(bbl_set):

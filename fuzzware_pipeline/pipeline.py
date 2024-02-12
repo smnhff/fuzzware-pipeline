@@ -628,6 +628,8 @@ class Pipeline:
             sess_input_content = os.listdir(new_sess_inputs_dir)
             logger.debug(f"Session dir content: {sess_input_content}")
             self.curr_main_session.minimize_inputs(prefix_candidate_path=prefix_input_candidate, is_previously_used_prefix=is_previously_used_prefix)
+            tmp = os.listdir(self.curr_main_session.base_input_dir)
+            logger.debug(f"Current base input dir content 4: {tmp}")
             # Try the inputs
             if self.curr_main_session.start_fuzzers():
                 start_success = True

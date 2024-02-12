@@ -325,11 +325,11 @@ class Session:
                 logger.warning("[TRIAGING STEP 1] ... Output end")
 
                 logger.warning("\n\n[TRIAGING STEP 2] Re-running single emulation run, showing its output...")
-                run_target(self.config_path, first_file(self.base_input_dir), self.extra_runtime_args + [ "-v" ])
+                run_target(self.config_path, first_file(self.base_input_dir), self.extra_runtime_args + [ "-v" ], get_output=True)
                 logger.warning("[TRIAGING STEP 2] ... Output end\n")
 
                 logger.warning("\n\n[TRIAGING STEP 3] Re-running single emulation run with .cur_input file, showing its output...")
-                run_target(self.config_path, self.fuzzer_cur_input_path(instance.inst_num), self.extra_runtime_args + [ "-v" ])
+                run_target(self.config_path, self.fuzzer_cur_input_path(instance.inst_num), self.extra_runtime_args + [ "-v" ], get_output=True)
                 logger.warning("[TRIAGING STEP 3] ... Output end\n")
 
                 return False

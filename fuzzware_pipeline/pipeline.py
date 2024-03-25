@@ -597,6 +597,7 @@ class Pipeline:
         # Before adding the new session, get the possibly previously used prefix path
         is_previously_used_prefix = False
         if self.curr_main_sess_index and self.curr_main_session.prefix_input_path:
+            logger.debug(f"We have a prefix from the previous session: {self.curr_main_session.prefix_input_path}")
             is_previously_used_prefix = True
             prefix_input_candidate = self.curr_main_session.prefix_input_path
 
@@ -612,10 +613,14 @@ class Pipeline:
             logger.debug("Copying over {} inputs".format(len(input_path_list)))
 
             new_sess_inputs_dir = self.curr_main_session.base_input_dir
+            logger.debug(f"Creating directory {new_sess_inputs_dir}")
             os.mkdir(new_sess_inputs_dir)
             for path in input_path_list:
+                logger.debug(f"Copying {path} to {new_sess_inputs_dir}")
                 shutil.copy2(path, new_sess_inputs_dir)
             self.curr_main_session.minimize_inputs(prefix_candidate_path=prefix_input_candidate, is_previously_used_prefix=is_previously_used_prefix)
+            tmp = os.listdir(self.curr_main_session.base_input_dir)
+            logger.debug(f"Current base input dir content 4: {tmp}")
             # Try the inputs
             if self.curr_main_session.start_fuzzers():
                 start_success = True
@@ -792,6 +797,7 @@ class Pipeline:
                             restart_pending, num_config_updates = False, 0
                             self.curr_main_session.shutdown()
                             self.add_main_session(pending_prefix_candidate)
+                            logger.debug(f"Updated to checkpoint {self.current_checkpoint_name}")
                             pending_prefix_candidate = None
                             time_latest_new_basic_block = None
                         else:

@@ -269,9 +269,6 @@ class Pipeline:
             checkpoint["avoided_bbls"] = set()
         # this one is mandatory, so no check before
         checkpoint["checkpoint_target"] = parse_address_value(self.symbols, checkpoint_config[CONFIG_ENTRY_NAME_CHECKPOINTS_TARGET]) & (~1)
-        logger.debug("Parsed checkpoint config. Checkpoint target bbl: 0x{:08x}".format(checkpoint["checkpoint_target"]))
-        logger.debug("Avoid list: " + " ".join([hex(addr) for addr in checkpoint["avoided_bbls"]]))
-        logger.debug("Required: " + " ".join([hex(addr) for addr in checkpoint["required_bbls"]]))
         return checkpoint
 
     def parse_ground_truth_files(self):
@@ -490,7 +487,6 @@ class Pipeline:
     # this checks if the currently defined checkpoint is hit 
     def checkpoint_progress(self, bbl_set):
         tmp = self.current_checkpoint["checkpoint_target"]
-        logger.debug(f"checkpoint progress check! Looking for {tmp} in {bbl_set}")
         # did we find our checkpoint?
         return self.current_checkpoint and (self.current_checkpoint["checkpoint_target"] in bbl_set) and (
             # And no blacklist addresses found and all whitelist addresses in bbl set
@@ -601,7 +597,6 @@ class Pipeline:
         # Before adding the new session, get the possibly previously used prefix path
         is_previously_used_prefix = False
         if self.curr_main_sess_index and self.curr_main_session.prefix_input_path:
-            logger.debug(f"We have a prefix from the previous session: {self.curr_main_session.prefix_input_path}")
             is_previously_used_prefix = True
             prefix_input_candidate = self.curr_main_session.prefix_input_path
 
@@ -612,24 +607,15 @@ class Pipeline:
         # Try different sets of inputs in order of quality
         start_success = False
         input_paths = self.choose_next_session_inputs(config_map)
-        logger.debug(f"Taken from config map {config_map}")
         for input_path_list in input_paths:
-            logger.debug(f"Trying out this list of paths: {input_path_list}")
             # We have previous inputs, carry them over
             logger.debug("Copying over {} inputs".format(len(input_path_list)))
 
             new_sess_inputs_dir = self.curr_main_session.base_input_dir
-            logger.debug(f"Creating directory {new_sess_inputs_dir}")
             os.mkdir(new_sess_inputs_dir)
             for path in input_path_list:
-                logger.debug(f"Copying {path} to {new_sess_inputs_dir}")
                 shutil.copy2(path, new_sess_inputs_dir)
-            logger.debug(f"Current state: {self}")
-            sess_input_content = os.listdir(new_sess_inputs_dir)
-            logger.debug(f"Session dir content: {sess_input_content}")
             self.curr_main_session.minimize_inputs(prefix_candidate_path=prefix_input_candidate, is_previously_used_prefix=is_previously_used_prefix)
-            tmp = os.listdir(self.curr_main_session.base_input_dir)
-            logger.debug(f"Current base input dir content 4: {tmp}")
             # Try the inputs
             if self.curr_main_session.start_fuzzers():
                 start_success = True
@@ -806,7 +792,6 @@ class Pipeline:
                             restart_pending, num_config_updates = False, 0
                             self.curr_main_session.shutdown()
                             self.add_main_session(pending_prefix_candidate)
-                            logger.debug(f"Updated to checkpoint {self.current_checkpoint_name}")
                             pending_prefix_candidate = None
                             time_latest_new_basic_block = None
                         else:

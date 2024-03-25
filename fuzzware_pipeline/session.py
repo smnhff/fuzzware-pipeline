@@ -152,15 +152,12 @@ class Session:
         checkpoint_progress = self.parent.checkpoint_progress(bbl_set);
         # if neither happened, we do not have an interesting prefix
         if not (checkpoints_done or checkpoint_progress):
-            logger.debug("found no checkpoint progress!")
             return None
 
         prefix_size = None
         # count all the consumptions
         for evt_id, pc, lr, mode, access_size, access_fuzz_ind, num_consumed_fuzz_bytes, address, _ in parse_mmio_trace(self.temp_mmio_trace_path)[::-1]:
             if mode == "r":
-                logger.debug(f"found a memory access with the following properties: \n \
-                        pc: {pc}, lr: {lr}, access size: {access_size}, access indicator: {access_fuzz_ind}, num consumed bytes {num_consumed_fuzz_bytes}, address: {address}")
                 prefix_size = access_fuzz_ind + num_consumed_fuzz_bytes
                 break
 
@@ -179,7 +176,6 @@ class Session:
                 if self.parent.is_successfully_booted(bbl_set) or self.parent.checkpoint_progress(bbl_set):
                     return prefix_size
                 prefix_size += 1
-        logger.debug("could not iterate the prefix until we show some progress")
         return None
 
     def emulator_args(self):
@@ -212,12 +208,9 @@ class Session:
             # this returns none when we do not have a prefix
             # if it is not none, the current checkpoint is no longer needed 
             progress_prefix_size = self.get_progress_prefix_size(prefix_candidate_path)
-            logger.debug(f"We are minimizing with a prefix, length {progress_prefix_size}")
             did_some_progress = progress_prefix_size is not None
             if is_previously_used_prefix:
-                logger.debug("we have an old prefix")
                 if did_some_progress:
-                    logger.debug("The old prefix did some progress?")
                     # the old prefix has had its update processed already
                     # technically, this cannot happen. An old prefix cannot progress 
                     # further in the checkpoints, can it?
@@ -227,30 +220,21 @@ class Session:
                     self.save_prefix_input(prefix_candidate_path, progress_prefix_size)
                     prepend_to_all(self.base_input_dir, prefix_candidate_path, from_offset=progress_prefix_size)
                 else:
-                    logger.debug("Old prefix did not find new progress, but still keep it")
                     # the prefix did not make progress. Still, keep it as we need it to reach the next prefix
                     # Attach the no longer booting prefix to input files and minimize without prefix
                     self.save_prefix_input(prefix_candidate_path, progress_prefix_size)
                     prepend_to_all(self.base_input_dir, prefix_candidate_path)
             else:
                 if did_some_progress:
-                    logger.debug("new prefix, progresses further!")
                     # Update the checkpoint since we are not none
                     # does not matter if we are the last checkpoint
                     # in this case, update checkpoint does nothing
                     self.parent.update_checkpoint()
                     # A brand new booting input was discovered, use it as new input prefix and reset to generic inputs
                     # extract prefix from input, copy over generic base inputs
-                    logger.debug(f"Reached a checkpoint, deleting {self.base_input_dir} and resetting to {self.parent.generic_inputs_dir}")
-                    tmp = os.listdir(self.base_input_dir)
-                    logger.debug(f"Current base input dir content 1: {tmp}")
                     shutil.rmtree(self.base_input_dir)
                     shutil.copytree(self.parent.generic_inputs_dir, self.base_input_dir)
-                    tmp = os.listdir(self.base_input_dir)
-                    logger.debug(f"Current base input dir content 2: {tmp}")
                     self.save_prefix_input(prefix_candidate_path, progress_prefix_size)
-                    tmp = os.listdir(self.base_input_dir)
-                    logger.debug(f"Current base input dir content 3: {tmp}")
                     # No minimization or input corpus adjustment required in this case, return
                     return
         else:
@@ -258,7 +242,6 @@ class Session:
             pass
 
         # Perform minimization. In case an input prefix is used, this is already saved in self.extra_runtime_args
-        logger.debug(f"Moving {self.base_input_dir} to {self.temp_minimization_dir}")
         shutil.move(self.base_input_dir, self.temp_minimization_dir)
         harness_args = self.emulator_args()
 
@@ -266,13 +249,10 @@ class Session:
             run_corpus_minimizer(harness_args, self.temp_minimization_dir, self.base_input_dir, silent=silent, use_aflpp=self.parent.use_aflpp)
             if not os.listdir(self.base_input_dir):
                 self.parent.add_warning_line("Minimization for fuzzing session '{}' had no inputs remaining, copying generic inputs.".format(self.name))
-                logger.debug(f"Minimisation did not find a base dir and is copying over the generic dir")
                 shutil.rmtree(self.base_input_dir, True)
                 shutil.copytree(self.parent.generic_inputs_dir, self.base_input_dir)
         except subprocess.CalledProcessError as e:
-            logger.debug(e)
             self.parent.add_warning_line("Minimization for fuzzing session '{}' failed, copying full inputs.".format(self.name))
-            logger.debug(f"corpus minimization process failed, restoring backup")
             
             # In case minimization does not work out, copy all inputs
             shutil.rmtree(self.base_input_dir, True)

@@ -136,21 +136,30 @@ class Session:
         self.fuzzers.append(fuzzer)
         return fuzzer.start(silent=True)
 
-    def get_booting_prefix_size(self, input_path):
+    def get_progress_prefix_size(self, input_path):
         """
         For an input file located at input_path, find the prefix size required to reach successful boot.
 
         If booting successful, returns the size of the input prefix.
         Otherwise, returns None
         """
-        gen_traces(self.config_path, input_path, mmio_trace_path=self.temp_mmio_trace_path, bbl_set_path=self.temp_bbl_set_path, extra_args=["--exit-at", "0x{:x}".format(self.parent.booted_bbl)])
+        checkpoint_target = self.parent.current_checkpoint["checkpoint_target"]
+        gen_traces(self.config_path, input_path, mmio_trace_path=self.temp_mmio_trace_path, bbl_set_path=self.temp_bbl_set_path, extra_args=["--exit-at", "0x{:x}".format(checkpoint_target)])
         bbl_set = set(parse_bbl_set(self.temp_bbl_set_path))
-        if not self.parent.is_successfully_booted(bbl_set):
+        # did we find the last checkpoint?
+        checkpoints_done = self.parent.is_successfully_booted(bbl_set);
+        # did we find our current checkpoint?
+        checkpoint_progress = self.parent.checkpoint_progress(bbl_set);
+        # if neither happened, we do not have an interesting prefix
+        if not (checkpoints_done or checkpoint_progress):
             return None
 
         prefix_size = None
-        for _, _, _, mode, _, access_fuzz_ind, num_consumed_fuzz_bytes, _, _ in parse_mmio_trace(self.temp_mmio_trace_path)[::-1]:
+        # count all the consumptions
+        for evt_id, pc, lr, mode, access_size, access_fuzz_ind, num_consumed_fuzz_bytes, address, _ in parse_mmio_trace(self.temp_mmio_trace_path)[::-1]:
             if mode == "r":
+                logger.debug(f"found a memory access with the following properties: \n \
+                        pc: {pc}, lr: {lr}, access size: {access_size}, access indicator: {access_fuzz_ind}, num consumed bytes {num_consumed_fuzz_bytes}, address: {address}")
                 prefix_size = access_fuzz_ind + num_consumed_fuzz_bytes
                 break
 
@@ -161,13 +170,14 @@ class Session:
             # Try expanding input and re-running for a number of times
             for _ in range(16):
                 copy_prefix_to(self.temp_prefix_input_path, input_path, prefix_size)
-                gen_traces(self.config_path, self.temp_prefix_input_path, mmio_trace_path=self.temp_mmio_trace_path, bbl_set_path=self.temp_bbl_set_path, extra_args=["--exit-at", "0x{:x}".format(self.parent.booted_bbl)])
+                # gen_traces(self.config_path, self.temp_prefix_input_path, mmio_trace_path=self.temp_mmio_trace_path, bbl_set_path=self.temp_bbl_set_path, extra_args=["--exit-at", "0x{:x}".format(self.parent.booted_bbl)])
+                checkpoint_target = self.parent.current_checkpoint["checkpoint_target"]
+                gen_traces(self.config_path, self.temp_prefix_input_path, mmio_trace_path=self.temp_mmio_trace_path, bbl_set_path=self.temp_bbl_set_path, extra_args=["--exit-at", "0x{:x}".format(checkpoint_target)])
                 bbl_set = set(parse_bbl_set(self.temp_bbl_set_path))
-
-                if self.parent.is_successfully_booted(bbl_set):
+                # if we are done with our checkpoints or reached our current checkpoint, return the prefix size
+                if self.parent.is_successfully_booted(bbl_set) or self.parent.checkpoint_progress(bbl_set):
                     return prefix_size
                 prefix_size += 1
-
         return None
 
     def emulator_args(self):
@@ -197,25 +207,39 @@ class Session:
 
         # Handle cases where prefix candidate is passed
         if prefix_candidate_path:
-            booting_prefix_size = self.get_booting_prefix_size(prefix_candidate_path)
-            is_booted_successfully = booting_prefix_size is not None
+            # this returns none when we do not have a prefix
+            # if it is not none, the current checkpoint is no longer needed 
+            progress_prefix_size = self.get_progress_prefix_size(prefix_candidate_path)
+            did_some_progress = progress_prefix_size is not None
             if is_previously_used_prefix:
-                if is_booted_successfully:
+                if did_some_progress:
+                    # the old prefix has had its update processed already
+                    # technically, this cannot happen. An old prefix cannot progress 
+                    # further in the checkpoints, can it?
+                    # self.parent.update_checkpoint()
                     # A previously booting prefix still boots.
                     # Set the booting prefix and prepend remainder to input files
-                    self.save_prefix_input(prefix_candidate_path, booting_prefix_size)
-                    prepend_to_all(self.base_input_dir, prefix_candidate_path, from_offset=booting_prefix_size)
+                    self.save_prefix_input(prefix_candidate_path, progress_prefix_size)
+                    prepend_to_all(self.base_input_dir, prefix_candidate_path, from_offset=progress_prefix_size)
                 else:
-                    # The input no longer successfully boots the image
+                    # the prefix did not make progress. Still, keep it as we need it to reach the next prefix
                     # Attach the no longer booting prefix to input files and minimize without prefix
+                    self.save_prefix_input(prefix_candidate_path, progress_prefix_size)
                     prepend_to_all(self.base_input_dir, prefix_candidate_path)
             else:
-                if is_booted_successfully:
+                if did_some_progress:
+                    # Update the checkpoint since we are not none
+                    # does not matter if we are the last checkpoint
+                    # in this case, update checkpoint does nothing
+                    self.parent.update_checkpoint()
                     # A brand new booting input was discovered, use it as new input prefix and reset to generic inputs
                     # extract prefix from input, copy over generic base inputs
+                    logger.debug(f"Reached a checkpoint, deleting {self.base_input_dir} and resetting to {self.parent.generic_inputs_dir}")
+                    tmp = os.listdir(self.base_input_dir)
+                    logger.debug(f"Current base input dir content 1: {tmp}")
                     shutil.rmtree(self.base_input_dir)
                     shutil.copytree(self.parent.generic_inputs_dir, self.base_input_dir)
-                    self.save_prefix_input(prefix_candidate_path, booting_prefix_size)
+                    self.save_prefix_input(prefix_candidate_path, progress_prefix_size)
                     # No minimization or input corpus adjustment required in this case, return
                     return
         else:
@@ -223,6 +247,7 @@ class Session:
             pass
 
         # Perform minimization. In case an input prefix is used, this is already saved in self.extra_runtime_args
+        logger.debug(f"Moving {self.base_input_dir} to {self.temp_minimization_dir}")
         shutil.move(self.base_input_dir, self.temp_minimization_dir)
         harness_args = self.emulator_args()
 
@@ -230,11 +255,12 @@ class Session:
             run_corpus_minimizer(harness_args, self.temp_minimization_dir, self.base_input_dir, silent=silent, use_aflpp=self.parent.use_aflpp)
             if not os.listdir(self.base_input_dir):
                 self.parent.add_warning_line("Minimization for fuzzing session '{}' had no inputs remaining, copying generic inputs.".format(self.name))
+                logger.debug(f"Minimisation did not find a base dir and is copying over the generic dir")
                 shutil.rmtree(self.base_input_dir, True)
                 shutil.copytree(self.parent.generic_inputs_dir, self.base_input_dir)
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
             self.parent.add_warning_line("Minimization for fuzzing session '{}' failed, copying full inputs.".format(self.name))
-
+            
             # In case minimization does not work out, copy all inputs
             shutil.rmtree(self.base_input_dir, True)
             shutil.copytree(self.temp_minimization_dir, self.base_input_dir)
@@ -291,11 +317,11 @@ class Session:
                 logger.warning("[TRIAGING STEP 1] ... Output end")
 
                 logger.warning("\n\n[TRIAGING STEP 2] Re-running single emulation run, showing its output...")
-                run_target(self.config_path, first_file(self.base_input_dir), self.extra_runtime_args + [ "-v" ])
+                run_target(self.config_path, first_file(self.base_input_dir), self.extra_runtime_args + [ "-v" ], get_output=True)
                 logger.warning("[TRIAGING STEP 2] ... Output end\n")
 
                 logger.warning("\n\n[TRIAGING STEP 3] Re-running single emulation run with .cur_input file, showing its output...")
-                run_target(self.config_path, self.fuzzer_cur_input_path(instance.inst_num), self.extra_runtime_args + [ "-v" ])
+                run_target(self.config_path, self.fuzzer_cur_input_path(instance.inst_num), self.extra_runtime_args + [ "-v" ], get_output=True)
                 logger.warning("[TRIAGING STEP 3] ... Output end\n")
 
                 return False

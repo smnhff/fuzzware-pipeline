@@ -158,8 +158,6 @@ class Session:
         # count all the consumptions
         for evt_id, pc, lr, mode, access_size, access_fuzz_ind, num_consumed_fuzz_bytes, address, _ in parse_mmio_trace(self.temp_mmio_trace_path)[::-1]:
             if mode == "r":
-                logger.debug(f"found a memory access with the following properties: \n \
-                        pc: {pc}, lr: {lr}, access size: {access_size}, access indicator: {access_fuzz_ind}, num consumed bytes {num_consumed_fuzz_bytes}, address: {address}")
                 prefix_size = access_fuzz_ind + num_consumed_fuzz_bytes
                 break
 
@@ -234,9 +232,6 @@ class Session:
                     self.parent.update_checkpoint()
                     # A brand new booting input was discovered, use it as new input prefix and reset to generic inputs
                     # extract prefix from input, copy over generic base inputs
-                    logger.debug(f"Reached a checkpoint, deleting {self.base_input_dir} and resetting to {self.parent.generic_inputs_dir}")
-                    tmp = os.listdir(self.base_input_dir)
-                    logger.debug(f"Current base input dir content 1: {tmp}")
                     shutil.rmtree(self.base_input_dir)
                     shutil.copytree(self.parent.generic_inputs_dir, self.base_input_dir)
                     self.save_prefix_input(prefix_candidate_path, progress_prefix_size)
@@ -247,7 +242,6 @@ class Session:
             pass
 
         # Perform minimization. In case an input prefix is used, this is already saved in self.extra_runtime_args
-        logger.debug(f"Moving {self.base_input_dir} to {self.temp_minimization_dir}")
         shutil.move(self.base_input_dir, self.temp_minimization_dir)
         harness_args = self.emulator_args()
 
@@ -255,7 +249,6 @@ class Session:
             run_corpus_minimizer(harness_args, self.temp_minimization_dir, self.base_input_dir, silent=silent, use_aflpp=self.parent.use_aflpp)
             if not os.listdir(self.base_input_dir):
                 self.parent.add_warning_line("Minimization for fuzzing session '{}' had no inputs remaining, copying generic inputs.".format(self.name))
-                logger.debug(f"Minimisation did not find a base dir and is copying over the generic dir")
                 shutil.rmtree(self.base_input_dir, True)
                 shutil.copytree(self.parent.generic_inputs_dir, self.base_input_dir)
         except subprocess.CalledProcessError as e:

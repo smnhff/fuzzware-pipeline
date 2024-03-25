@@ -23,10 +23,4 @@ def run_target(config_path, input_path, extra_args, get_output=False, silent=Fal
         logger.debug("Full command: {}".format(" ".join(arg_list)))
 
     if get_output:
-        out = subprocess.run(arg_list, check=False, stdout=subprocess.PIPE).stdout
-        err = subprocess.run(arg_list, check=False, stdout=subprocess.PIPE).stderr
-        logger.debug(f"subprocess stdout: {out}")
-        logger.debug(f"subprocess stderr: {err}")
-        return out
-    #     return subprocess.run(arg_list, check=False, stdout=subprocess.PIPE).stdout
-    return subprocess.call(arg_list, stdout=stdout, stderr=stderr)
+         return subprocess.run(arg_list, check=False, stdout=subprocess.PIPE).stdout
